@@ -1,5 +1,5 @@
-# user-injector
-Scripts used to populate an AD with some OU and users.
+# AD-config
+Scripts used to configure and populate an AD with some OU and users.
 
 Before injecting users on our Windows Server we need to check some steps of the configuration.
 We are going to do that with 3 differents scripts, execute them in that order :
