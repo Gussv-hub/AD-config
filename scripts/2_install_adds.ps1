@@ -10,7 +10,7 @@ Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
 ### Étape 2 : Configuration du contrôleur de domaine ###
 $DomainName = "gussv.lan"
 $NetBiosName = "GUSSV"
-$SafeModePassword = ConvertTo-SecureString "Tech$123456" -AsPlainText -Force
+$SafeModePassword = ConvertTo-SecureString "Tech$123456" -AsPlainText -Force #Amélioration : demander a l'ustilisateur de taper le mot de passe pour la sécurité
 
 Write-Host "Promotion du serveur en contrôleur de domaine pour la forêt $DomainName..."
 Install-ADDSForest `

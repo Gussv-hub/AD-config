@@ -1,55 +1,87 @@
 # Objectif : Créer des OUs et importer des utilisateurs depuis des fichiers CSV
 
-# Import du module Active Directory
-Import-Module ActiveDirectory
-
-### Étape 1 : Définition des OUs ###
-$OUUsers = "OU=Utilisateurs,DC=gussv,DC=lan"
-$OUAdmins = "OU=Administrateurs,DC=gussv,DC=lan"
-
-# Création des OUs si elles n'existent pas déjà
-if (-not (Get-ADOrganizationalUnit -Filter {DistinguishedName -eq $OUUsers} -ErrorAction SilentlyContinue)) {
-    New-ADOrganizationalUnit -Name "Utilisateurs" -Path "DC=gussv,DC=lan" -ProtectedFromAccidentalDeletion $false
-    Write-Host "OU Utilisateurs créée."
+# Vérifie si le module Active Directory est installé
+if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+    Write-Host "Le module Active Directory n'est pas installé. Veuillez l'installer avant d'exécuter ce script." -ForegroundColor Red
+    exit
 }
 
-if (-not (Get-ADOrganizationalUnit -Filter {DistinguishedName -eq $OUAdmins} -ErrorAction SilentlyContinue)) {
-    New-ADOrganizationalUnit -Name "Administrateurs" -Path "DC=gussv,DC=lan" -ProtectedFromAccidentalDeletion $false
-    Write-Host "OU Administrateurs créée."
-}
+# Définition du chemin du domaine gussv.lan
+$domainDN = "DC=gussv,DC=lan"
 
-### Étape 2 : Importation des utilisateurs ###
-Function Import-Users {
-    param (
-        [string]$CSVPath,
-        [string]$OU
-    )
+# Liste des OUs à créer
+$ouList = @("Utilisateurs", "Administrateur")
+
+foreach ($ou in $ouList) {
+    $ouPath = "OU=$ou,$domainDN"
     
-    if (Test-Path $CSVPath) {
-        $Users = Import-Csv $CSVPath
-        foreach ($User in $Users) {
-            $SamAccountName = $User.SamAccountName
-            if (-not (Get-ADUser -Filter {SamAccountName -eq $SamAccountName} -ErrorAction SilentlyContinue)) {
-                New-ADUser -Name "$($User.first_name) $($User.last_name)" `
-                    -GivenName $User.first_name `
-                    -Surname $User.last_name `
-                    -SamAccountName $SamAccountName `
-                    -UserPrincipalName "$SamAccountName@gussv.lan" `
-                    -Path $OU `
-                    -AccountPassword (ConvertTo-SecureString $User.password -AsPlainText -Force) `
-                    -Enabled $true
-                Write-Host "Utilisateur $SamAccountName créé."
-            } else {
-                Write-Host "L'utilisateur $SamAccountName existe déjà."
-            }
-        }
+    # Vérifie si l'OU existe déjà
+    if (Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction SilentlyContinue) {
+        Write-Host "L'OU '$ou' existe déjà." -ForegroundColor Yellow
     } else {
-        Write-Host "Le fichier $CSVPath est introuvable."
+        # Création de l'OU
+        New-ADOrganizationalUnit -Name $ou -Path $domainDN -ProtectedFromAccidentalDeletion $true
+        Write-Host "L'OU '$ou' a été créée avec succès." -ForegroundColor Green
     }
 }
 
-# Importation des utilisateurs depuis les fichiers CSV
-Import-Users -CSVPath ".\data\users_mock.csv" -OU $OUUsers
-Import-Users -CSVPath ".\data\admins_mock.csv" -OU $OUAdmins
+# Définir les chemins des OUs
+$domainDN = "DC=gussv,DC=lan"
+$ouUsers = "OU=Utilisateurs,$domainDN"
+$ouAdmins = "OU=Administrateur,$domainDN"
 
-Write-Host "Configuration de l'AD terminée."
+# Fonction pour ajouter un utilisateur
+function Add-UserToOU {
+    param (
+        [string]$lastName,
+        [string]$firstName,
+        [string]$password,
+        [string]$ou
+    )
+
+    # Crée le nom d'utilisateur (nom principal) au format "username@gussv.lan"
+    $username = "$lastName$firstName" # Exemple: "DoeJohn"
+    $userPrincipalName = "$username@gussv.lan"
+
+    try {
+        # Crée l'utilisateur dans l'OU spécifiée
+        New-ADUser -SamAccountName $username `
+                   -UserPrincipalName $userPrincipalName `
+                   -GivenName $firstName `
+                   -Surname $lastName `
+                   -Name "$firstName $lastName" `
+                   -DisplayName "$firstName $lastName" `
+                   -Path $ou `
+                   -AccountPassword (ConvertTo-SecureString -AsPlainText $password -Force) `
+                   -Enabled $true `
+                   -ChangePasswordAtLogon $true `
+                   -PasswordNeverExpires $false
+
+        Write-Host "Utilisateur '$username' ajouté avec succès dans '$ou'." -ForegroundColor Green
+    }
+    catch {
+        Write-Host "Erreur lors de l'ajout de l'utilisateur '$username': $_" -ForegroundColor Red
+    }
+}
+
+# Ajouter les utilisateurs de users_mock.csv dans l'OU Utilisateurs
+$usersMockPath = ".\data\users_mock.csv"
+$usersMock = Import-Csv $usersMockPath
+
+foreach ($user in $usersMock) {
+    Add-UserToOU -firstName $user.first_name `
+                 -lastName $user.last_name `
+                 -password $user.password `
+                 -ou $ouUsers
+}
+
+# Ajouter les utilisateurs de admin_mock.csv dans l'OU Administrateur
+$adminMockPath = ".\data\admins_mock.csv"
+$adminMock = Import-Csv $adminMockPath
+
+foreach ($admin in $adminMock) {
+    Add-UserToOU -firstName $admin.first_name `
+                 -lastName $admin.last_name `
+                 -password $admin.password `
+                 -ou $ouAdmins
+}
